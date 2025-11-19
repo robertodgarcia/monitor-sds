@@ -1,8 +1,4 @@
-Aqui está o seu código ajustado. Fiz exatamente as **3 retificações** que você pediu (remetente simplificado, lógica de palavras corrigida e mensagem de teste ao ligar).
 
-Mantive a estrutura final pronta para o **GitHub Actions** (sem o loop infinito).
-
-```python
 import imaplib
 import email
 from email.header import decode_header
