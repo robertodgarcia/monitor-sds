@@ -21,7 +21,6 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 PALAVRAS_CHAVE = ["DOMINGUEZ", "AGOSTINHO"]
 
 def enviar_telegram(mensagem):
-    # Corta mensagem muito longa para não dar erro
     print(f" [Telegram] Msg: {mensagem[:50]}...")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
@@ -34,21 +33,20 @@ def enviar_arquivo_telegram(nome_arquivo, dados_bytes):
     print(f" [Telegram] UPLOAD iniciando: {nome_arquivo}...")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
     
+    # Correção para garantir que HTML abra: Força extensão .html se não tiver
+    if "html" in nome_arquivo.lower() and not nome_arquivo.lower().endswith(".html"):
+        nome_arquivo += ".html"
+
     files = {'document': (nome_arquivo, dados_bytes)}
     data = {"chat_id": TELEGRAM_CHAT_ID, "caption": f"📎 Anexo: {nome_arquivo}"}
     
     try:
         r = requests.post(url, data=data, files=files)
-        if r.status_code == 200:
-            print(" [Telegram] Arquivo enviado com SUCESSO.")
-            return True
-        else:
+        if r.status_code != 200:
             print(f" [ERRO TELEGRAM] Código: {r.status_code} | Resposta: {r.text}")
-            enviar_telegram(f"⚠️ Erro ao enviar arquivo {nome_arquivo}: {r.text}")
-            return False
+            enviar_telegram(f"⚠️ Erro ao enviar arquivo {nome_arquivo}")
     except Exception as e:
         print(f" [Erro Crítico Envio] {e}")
-        return False
 
 def extrair_texto_pdf(payload_bytes):
     texto_completo = ""
@@ -96,11 +94,19 @@ def verificar_emails():
         status, messages = mail.search(None, 'UNSEEN')
         email_ids = messages[0].split()
         
+        # Contadores para o Relatório
+        total_emails = len(email_ids)
+        qtd_com_alerta = 0
+        qtd_sem_alerta = 0
+
         if not email_ids:
             print(" > Nenhum e-mail novo.")
+            enviar_telegram(f"📊 **Relatório de Check:**\nNenhum e-mail novo encontrado.")
             return
         
-        print(f" > Encontrados {len(email_ids)} novos e-mails.")
+        print(f" > Encontrados {total_emails} novos e-mails.")
+        # Avisa que começou a trabalhar
+        enviar_telegram(f"🔄 Iniciando verificação de {total_emails} novos e-mails...")
 
         for e_id in email_ids:
             _, msg_data = mail.fetch(e_id, '(RFC822)')
@@ -114,34 +120,34 @@ def verificar_emails():
 
             if assunto_upper.startswith("BIDS"):
                 mail.store(e_id, '+FLAGS', '\\Deleted')
+                total_emails -= 1 # Não conta BIDS no relatório final
                 continue
 
             conteudo_analisado = ""
             anexos_para_enviar = [] 
 
-            # --- PROCESSAMENTO DE ANEXOS E CORPO ---
+            # --- PROCESSAMENTO ---
             if msg.is_multipart():
                 for part in msg.walk():
                     ctype = part.get_content_type()
                     filename = part.get_filename()
-                    if filename: 
-                        filename = decodificar_texto(filename)
+                    if filename: filename = decodificar_texto(filename)
                     else:
                         if "pdf" in ctype: filename = "documento.pdf"
                         elif "html" in ctype: filename = "corpo_email.html"
-                        else: filename = "anexo_sem_nome.txt"
+                        else: filename = "anexo.txt"
 
                     payload = part.get_payload(decode=True)
                     if not payload: continue
 
                     if "application/pdf" in ctype or ".pdf" in filename.lower():
-                        print(f"      [PDF Achado] {filename}")
                         conteudo_analisado += "\n" + extrair_texto_pdf(payload)
                         anexos_para_enviar.append((filename, payload))
                     
                     elif "html" in ctype or ".html" in filename.lower():
-                        print(f"      [HTML Achado] {filename}")
                         conteudo_analisado += "\n" + extrair_texto_html(payload)
+                        # Garante extensão .html para abrir no celular
+                        if not filename.lower().endswith(".html"): filename += ".html"
                         anexos_para_enviar.append((filename, payload))
 
                     elif "text/plain" in ctype:
@@ -149,7 +155,6 @@ def verificar_emails():
                         except: pass
 
             else:
-                # Mensagem simples
                 ctype = msg.get_content_type()
                 payload = msg.get_payload(decode=True)
                 if "html" in ctype:
@@ -159,36 +164,50 @@ def verificar_emails():
                      try: conteudo_analisado = payload.decode('utf-8', errors='ignore')
                      except: pass
 
-            # --- VERIFICAÇÃO FINAL ---
+            # --- VERIFICAÇÃO ---
             conteudo_upper = conteudo_analisado.upper()
             palavras_encontradas = [p for p in PALAVRAS_CHAVE if p in conteudo_upper]
             
             deve_enviar_arquivo = False
+            alerta_gerado = False
 
             # 1. GRÁFICA
             if "grafica" in remetente and "BIS" in assunto_upper:
                 if palavras_encontradas:
-                    # AQUI ESTAVA O ERRO: mudei 'encontradas' para 'palavras_encontradas'
                     enviar_telegram(f"🚨 **SEU NOME NO BIS!**\n{assunto}\nTermos: {palavras_encontradas}")
                     deve_enviar_arquivo = True
+                    alerta_gerado = True
                 else:
                     enviar_telegram(f"ℹ️ **Novo BIS Publicado**\n{assunto}\n(Nada encontrado)")
+                    # Consideramos BIS sem nome como "sem alerta crítico", mas foi notificado
 
             # 2. DIVPORT
             elif "divport" in remetente:
                 if palavras_encontradas:
-                    # AQUI TAMBÉM
                     enviar_telegram(f"⚠️ **CITAÇÃO NA DIVPORT**\n{assunto}\nTermos: {palavras_encontradas}")
                     deve_enviar_arquivo = True
+                    alerta_gerado = True
+
+            # Contabiliza para o relatório
+            if alerta_gerado:
+                qtd_com_alerta += 1
+            else:
+                qtd_sem_alerta += 1
 
             # --- ENVIO DOS ARQUIVOS ---
             if deve_enviar_arquivo:
-                if not anexos_para_enviar:
-                    enviar_telegram("⚠️ Encontrei o nome, mas não consegui extrair o arquivo anexo.")
-                else:
-                    enviar_telegram(f"📎 Enviando {len(anexos_para_enviar)} arquivo(s)...")
+                if anexos_para_enviar:
                     for nome, dados in anexos_para_enviar:
                         enviar_arquivo_telegram(nome, dados)
+
+        # --- RELATÓRIO FINAL ---
+        relatorio = (
+            f"📊 **Relatório Final:**\n"
+            f"📨 Processados: {total_emails}\n"
+            f"🚨 Com seu nome: {qtd_com_alerta}\n"
+            f"⚪ Sem seu nome: {qtd_sem_alerta}"
+        )
+        enviar_telegram(relatorio)
 
         mail.expunge()
         mail.close()
@@ -196,7 +215,8 @@ def verificar_emails():
         
     except Exception as e:
         print(f"Erro na execução: {e}")
+        enviar_telegram(f"⚠️ Erro no script: {e}")
 
 if __name__ == "__main__":
-    print("🤖 Monitor v5.1 (Correção Variável)...")
+    print("🤖 Monitor v6.0 (Relatório + Fix HTML)...")
     verificar_emails()
