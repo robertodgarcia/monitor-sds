@@ -1,4 +1,3 @@
-
 import imaplib
 import email
 from email.header import decode_header
@@ -9,10 +8,10 @@ import PyPDF2
 import os
 import datetime
 import ssl 
+import re  # <--- Nova ferramenta para limpar HTML
 
 # --- CONFIGURAÇÕES ---
-# No GitHub Actions, estas variáveis vêm dos "Secrets".
-# Se for rodar no PC para teste, preencha com seus dados reais entre aspas.
+# GitHub Actions Secrets
 EMAIL_USER = os.getenv("EMAIL_USER") 
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 IMAP_SERVER = "imaps.expresso.pe.gov.br"
@@ -27,9 +26,7 @@ def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
     try:
-        response = requests.post(url, data=data)
-        if response.status_code != 200:
-            print(f" [Erro API Telegram] Status: {response.status_code} | {response.text}")
+        requests.post(url, data=data)
     except Exception as e:
         print(f" [Erro Conexão Telegram] {e}")
 
@@ -43,6 +40,17 @@ def extrair_texto_pdf(payload_bytes):
     except:
         return ""
     return texto_completo
+
+def extrair_texto_html(payload_bytes):
+    """Limpa as tags HTML (<br>, <div>) e deixa só o texto visível"""
+    try:
+        texto_html = payload_bytes.decode('utf-8', errors='ignore')
+        # Regex simples para remover tags HTML
+        clean = re.compile('<.*?>')
+        texto_limpo = re.sub(clean, ' ', texto_html)
+        return texto_limpo
+    except:
+        return ""
 
 def decodificar_texto(header_text):
     if not header_text: return ""
@@ -104,36 +112,55 @@ def verificar_emails():
                 print("   -> BIDS deletado.")
                 continue
 
-            # Extração de Conteúdo
+            # Extração de Conteúdo (Texto, PDF e agora HTML)
             conteudo_analisado = ""
+            
             if msg.is_multipart():
                 for part in msg.walk():
-                    if part.get_content_type() == "text/plain":
+                    ctype = part.get_content_type()
+                    filename = str(part.get_filename("")).lower()
+                    
+                    # 1. Texto Simples
+                    if ctype == "text/plain":
                         try: conteudo_analisado += part.get_payload(decode=True).decode('utf-8', errors='ignore')
                         except: pass
-                    if "application/pdf" in part.get_content_type() or ".pdf" in str(part.get_filename("")).lower():
+                    
+                    # 2. PDF
+                    elif "application/pdf" in ctype or ".pdf" in filename:
                         print("      [PDF] Lendo anexo...")
                         conteudo_analisado += "\n" + extrair_texto_pdf(part.get_payload(decode=True))
-            else:
-                try: conteudo_analisado = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
-                except: pass
+                    
+                    # 3. HTML (Nova funcionalidade)
+                    elif "html" in ctype or ".html" in filename or ".htm" in filename:
+                        print("      [HTML] Lendo anexo HTML...")
+                        conteudo_analisado += "\n" + extrair_texto_html(part.get_payload(decode=True))
 
-            # Lógica de Palavras (Correção 2: Lista direta)
+            else:
+                # Caso o e-mail não tenha anexo, mas o corpo seja HTML puro
+                ctype = msg.get_content_type()
+                payload = msg.get_payload(decode=True)
+                
+                if "html" in ctype:
+                     conteudo_analisado = extrair_texto_html(payload)
+                else:
+                     try: conteudo_analisado = payload.decode('utf-8', errors='ignore')
+                     except: pass
+
+            # Lógica de Palavras 
             conteudo_upper = conteudo_analisado.upper()
             palavras_encontradas = [p for p in PALAVRAS_CHAVE if p in conteudo_upper]
 
             if palavras_encontradas:
                 print(f"      [!] Encontrou: {palavras_encontradas}")
 
-            # Lógica GRÁFICA (Correção 1: Checagem simplificada)
-            # Verifica se "grafica" está no remetente (não precisa ser o email exato)
+            # Lógica GRÁFICA
             if "grafica" in remetente and "BIS" in assunto_upper:
                 if palavras_encontradas:
                     enviar_telegram(f"🚨 **SEU NOME NO BIS!**\n{assunto}\nTermos: {', '.join(palavras_encontradas)}")
                 else:
                     enviar_telegram(f"ℹ️ **Novo BIS Publicado**\n{assunto}\n(Nada encontrado)")
             
-            # Lógica DIVPORT (Correção 1: Checagem simplificada)
+            # Lógica DIVPORT
             elif "divport" in remetente:
                 if palavras_encontradas:
                     enviar_telegram(f"⚠️ **CITAÇÃO NA DIVPORT**\n{assunto}\nTermos: {', '.join(palavras_encontradas)}")
@@ -148,10 +175,8 @@ def verificar_emails():
         print(f"Erro na execução: {e}")
 
 if __name__ == "__main__":
-    # Correção 3: Teste de Telegram ao iniciar
-    # Isso ajuda a saber se o Bot está funcionando toda vez que o GitHub rodar
+    # Teste de Telegram ao iniciar
     print("🤖 Iniciando script via GitHub Actions...")
-    enviar_telegram("🤖 Monitor Rodando (GitHub Actions) - Check iniciado.")
+    enviar_telegram("🤖 Monitor Rodando (v3.0 com HTML) - Check iniciado.")
     
-    # Executa uma vez e encerra (Sem loop, pois é GitHub Actions)
     verificar_emails()
