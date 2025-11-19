@@ -142,9 +142,6 @@ def verificar_emails():
         print(f"Erro na execução: {e}")
 
 if __name__ == "__main__":
-    print("🤖 Bot Iniciado! Enviando teste para o Telegram...")
-    enviar_telegram("🤖 O Monitor de E-mail foi ligado com sucesso!")
-    
-    while True:
-        verificar_emails()
-        time.sleep(300)
+    # Sem loop infinito. Ele roda uma vez e o GitHub encerra.
+    # O agendador do GitHub (CRON) vai chamar de novo daqui a pouco.
+    verificar_emails()
