@@ -21,6 +21,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 PALAVRAS_CHAVE = ["DOMINGUEZ", "AGOSTINHO"]
 
 def enviar_telegram(mensagem):
+    # Corta mensagem muito longa para não dar erro
     print(f" [Telegram] Msg: {mensagem[:50]}...")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
@@ -33,7 +34,6 @@ def enviar_arquivo_telegram(nome_arquivo, dados_bytes):
     print(f" [Telegram] UPLOAD iniciando: {nome_arquivo}...")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
     
-    # Importante: O Telegram exige que enviemos o nome do arquivo na tupla
     files = {'document': (nome_arquivo, dados_bytes)}
     data = {"chat_id": TELEGRAM_CHAT_ID, "caption": f"📎 Anexo: {nome_arquivo}"}
     
@@ -117,20 +117,16 @@ def verificar_emails():
                 continue
 
             conteudo_analisado = ""
-            # Lista que guarda tuplas: (nome_do_arquivo, bytes_do_arquivo)
             anexos_para_enviar = [] 
 
             # --- PROCESSAMENTO DE ANEXOS E CORPO ---
             if msg.is_multipart():
                 for part in msg.walk():
                     ctype = part.get_content_type()
-                    cdisp = str(part.get("Content-Disposition"))
-                    
                     filename = part.get_filename()
                     if filename: 
                         filename = decodificar_texto(filename)
                     else:
-                        # Se não tem nome, inventamos um baseado no tipo
                         if "pdf" in ctype: filename = "documento.pdf"
                         elif "html" in ctype: filename = "corpo_email.html"
                         else: filename = "anexo_sem_nome.txt"
@@ -138,30 +134,26 @@ def verificar_emails():
                     payload = part.get_payload(decode=True)
                     if not payload: continue
 
-                    # Processar PDF
                     if "application/pdf" in ctype or ".pdf" in filename.lower():
                         print(f"      [PDF Achado] {filename}")
                         conteudo_analisado += "\n" + extrair_texto_pdf(payload)
                         anexos_para_enviar.append((filename, payload))
                     
-                    # Processar HTML
                     elif "html" in ctype or ".html" in filename.lower():
                         print(f"      [HTML Achado] {filename}")
                         conteudo_analisado += "\n" + extrair_texto_html(payload)
                         anexos_para_enviar.append((filename, payload))
 
-                    # Processar Texto Puro (apenas lê, não anexa para enviar pq é feio)
                     elif "text/plain" in ctype:
                         try: conteudo_analisado += payload.decode('utf-8', errors='ignore')
                         except: pass
 
             else:
-                # Mensagem simples (não multipart)
+                # Mensagem simples
                 ctype = msg.get_content_type()
                 payload = msg.get_payload(decode=True)
                 if "html" in ctype:
                      conteudo_analisado = extrair_texto_html(payload)
-                     # Força o envio do corpo como arquivo
                      anexos_para_enviar.append(("email_completo.html", payload))
                 else:
                      try: conteudo_analisado = payload.decode('utf-8', errors='ignore')
@@ -176,7 +168,8 @@ def verificar_emails():
             # 1. GRÁFICA
             if "grafica" in remetente and "BIS" in assunto_upper:
                 if palavras_encontradas:
-                    enviar_telegram(f"🚨 **SEU NOME NO BIS!**\n{assunto}\nTermos: {encontradas}")
+                    # AQUI ESTAVA O ERRO: mudei 'encontradas' para 'palavras_encontradas'
+                    enviar_telegram(f"🚨 **SEU NOME NO BIS!**\n{assunto}\nTermos: {palavras_encontradas}")
                     deve_enviar_arquivo = True
                 else:
                     enviar_telegram(f"ℹ️ **Novo BIS Publicado**\n{assunto}\n(Nada encontrado)")
@@ -184,13 +177,13 @@ def verificar_emails():
             # 2. DIVPORT
             elif "divport" in remetente:
                 if palavras_encontradas:
-                    enviar_telegram(f"⚠️ **CITAÇÃO NA DIVPORT**\n{assunto}\nTermos: {encontradas}")
+                    # AQUI TAMBÉM
+                    enviar_telegram(f"⚠️ **CITAÇÃO NA DIVPORT**\n{assunto}\nTermos: {palavras_encontradas}")
                     deve_enviar_arquivo = True
 
             # --- ENVIO DOS ARQUIVOS ---
             if deve_enviar_arquivo:
                 if not anexos_para_enviar:
-                    print("      [AVISO] Palavra achada, mas lista de anexos estava vazia.")
                     enviar_telegram("⚠️ Encontrei o nome, mas não consegui extrair o arquivo anexo.")
                 else:
                     enviar_telegram(f"📎 Enviando {len(anexos_para_enviar)} arquivo(s)...")
@@ -205,5 +198,5 @@ def verificar_emails():
         print(f"Erro na execução: {e}")
 
 if __name__ == "__main__":
-    print("🤖 Monitor v5.0 (Debug de Anexos)...")
+    print("🤖 Monitor v5.1 (Correção Variável)...")
     verificar_emails()
