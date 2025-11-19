@@ -33,7 +33,6 @@ def enviar_arquivo_telegram(nome_arquivo, dados_bytes):
     print(f" [Telegram] UPLOAD iniciando: {nome_arquivo}...")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
     
-    # Correção para garantir que HTML abra: Força extensão .html se não tiver
     if "html" in nome_arquivo.lower() and not nome_arquivo.lower().endswith(".html"):
         nome_arquivo += ".html"
 
@@ -43,7 +42,6 @@ def enviar_arquivo_telegram(nome_arquivo, dados_bytes):
     try:
         r = requests.post(url, data=data, files=files)
         if r.status_code != 200:
-            print(f" [ERRO TELEGRAM] Código: {r.status_code} | Resposta: {r.text}")
             enviar_telegram(f"⚠️ Erro ao enviar arquivo {nome_arquivo}")
     except Exception as e:
         print(f" [Erro Crítico Envio] {e}")
@@ -94,7 +92,6 @@ def verificar_emails():
         status, messages = mail.search(None, 'UNSEEN')
         email_ids = messages[0].split()
         
-        # Contadores para o Relatório
         total_emails = len(email_ids)
         qtd_com_alerta = 0
         qtd_sem_alerta = 0
@@ -105,8 +102,7 @@ def verificar_emails():
             return
         
         print(f" > Encontrados {total_emails} novos e-mails.")
-        # Avisa que começou a trabalhar
-        enviar_telegram(f"🔄 Iniciando verificação de {total_emails} novos e-mails...")
+        enviar_telegram(f"🔄 Verificando {total_emails} novos e-mails...")
 
         for e_id in email_ids:
             _, msg_data = mail.fetch(e_id, '(RFC822)')
@@ -120,11 +116,14 @@ def verificar_emails():
 
             if assunto_upper.startswith("BIDS"):
                 mail.store(e_id, '+FLAGS', '\\Deleted')
-                total_emails -= 1 # Não conta BIDS no relatório final
+                total_emails -= 1 
                 continue
 
             conteudo_analisado = ""
-            anexos_para_enviar = [] 
+            
+            # Listas separadas para fazer a filtragem depois
+            lista_pdfs = []
+            lista_htmls = []
 
             # --- PROCESSAMENTO ---
             if msg.is_multipart():
@@ -142,27 +141,33 @@ def verificar_emails():
 
                     if "application/pdf" in ctype or ".pdf" in filename.lower():
                         conteudo_analisado += "\n" + extrair_texto_pdf(payload)
-                        anexos_para_enviar.append((filename, payload))
+                        lista_pdfs.append((filename, payload))
                     
                     elif "html" in ctype or ".html" in filename.lower():
                         conteudo_analisado += "\n" + extrair_texto_html(payload)
-                        # Garante extensão .html para abrir no celular
                         if not filename.lower().endswith(".html"): filename += ".html"
-                        anexos_para_enviar.append((filename, payload))
+                        lista_htmls.append((filename, payload))
 
                     elif "text/plain" in ctype:
                         try: conteudo_analisado += payload.decode('utf-8', errors='ignore')
                         except: pass
-
             else:
                 ctype = msg.get_content_type()
                 payload = msg.get_payload(decode=True)
                 if "html" in ctype:
                      conteudo_analisado = extrair_texto_html(payload)
-                     anexos_para_enviar.append(("email_completo.html", payload))
+                     lista_htmls.append(("email_completo.html", payload))
                 else:
                      try: conteudo_analisado = payload.decode('utf-8', errors='ignore')
                      except: pass
+
+            # --- LÓGICA DE PRIORIDADE DE ANEXO ---
+            # Se tiver PDF, manda SÓ os PDFs. Se não tiver, manda os HTMLs.
+            anexos_para_enviar = []
+            if lista_pdfs:
+                anexos_para_enviar = lista_pdfs
+            else:
+                anexos_para_enviar = lista_htmls
 
             # --- VERIFICAÇÃO ---
             conteudo_upper = conteudo_analisado.upper()
@@ -179,7 +184,6 @@ def verificar_emails():
                     alerta_gerado = True
                 else:
                     enviar_telegram(f"ℹ️ **Novo BIS Publicado**\n{assunto}\n(Nada encontrado)")
-                    # Consideramos BIS sem nome como "sem alerta crítico", mas foi notificado
 
             # 2. DIVPORT
             elif "divport" in remetente:
@@ -188,7 +192,6 @@ def verificar_emails():
                     deve_enviar_arquivo = True
                     alerta_gerado = True
 
-            # Contabiliza para o relatório
             if alerta_gerado:
                 qtd_com_alerta += 1
             else:
@@ -199,6 +202,9 @@ def verificar_emails():
                 if anexos_para_enviar:
                     for nome, dados in anexos_para_enviar:
                         enviar_arquivo_telegram(nome, dados)
+                else:
+                    # Se chegou aqui e não tem anexo nenhum (nem PDF nem HTML)
+                    enviar_telegram("⚠️ Encontrei o nome, mas não havia anexo legível.")
 
         # --- RELATÓRIO FINAL ---
         relatorio = (
@@ -218,5 +224,5 @@ def verificar_emails():
         enviar_telegram(f"⚠️ Erro no script: {e}")
 
 if __name__ == "__main__":
-    print("🤖 Monitor v6.0 (Relatório + Fix HTML)...")
+    print("🤖 Monitor v7.0 (Prioridade PDF)...")
     verificar_emails()
