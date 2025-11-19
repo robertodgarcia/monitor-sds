@@ -155,4 +155,3 @@ if __name__ == "__main__":
     
     # Executa uma vez e encerra (Sem loop, pois é GitHub Actions)
     verificar_emails()
-```
