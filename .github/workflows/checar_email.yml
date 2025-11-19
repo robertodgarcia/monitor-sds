@@ -1,0 +1,32 @@
+name: Monitor de Email Policia
+
+on:
+  schedule:
+    # Roda a cada 10 minutos (o GitHub free às vezes atrasa se por 5 min exatos)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Permite rodar manualmente clicando num botão se quiser testar
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Baixar código
+      uses: actions/checkout@v3
+
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Instalar bibliotecas
+      run: |
+        pip install requests PyPDF2
+
+    - name: Rodar Script
+      env:
+        EMAIL_USER: ${{ secrets.EMAIL_USER }}
+        EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: python monitor_bis.py
