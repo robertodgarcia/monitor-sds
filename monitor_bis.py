@@ -5,13 +5,17 @@ import time
 import requests
 import io
 import PyPDF2
-import os  # Importante para pegar as senhas secretas
+import os
 import datetime
+import ssl # <--- Essencial para corrigir o erro de chave
 
-# --- CONFIGURAÇÕES VIA VARIÁVEIS DE AMBIENTE (SEGURANÇA) ---
-EMAIL_USER = os.getenv("EMAIL_USER")
+# --- CONFIGURAÇÕES ---
+# Se estiver rodando localmente/VPS e as variáveis não estiverem setadas, 
+# substitua os os.getenv pelo valor real entre aspas.
+EMAIL_USER = os.getenv("EMAIL_USER") 
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 IMAP_SERVER = "imaps.expresso.pe.gov.br"
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -51,16 +55,29 @@ def decodificar_texto(header_text):
     return texto_final
 
 def verificar_emails():
-    print("--- Iniciando verificação ---")
+    print(f"--- Iniciando verificação: {datetime.datetime.now()} ---")
     
-    # Tratamento de erro caso as variáveis não existam
+    # Verifica se as senhas existem antes de tentar
     if not EMAIL_USER or not EMAIL_PASS:
-        print("ERRO: Credenciais não configuradas no GitHub Secrets.")
+        print("ERRO CRÍTICO: Variáveis de ambiente (EMAIL_USER/PASS) não encontradas.")
+        print("Se estiver rodando no PC/VPS, preencha as variáveis no topo do script.")
         return
 
     try:
-        mail = imaplib.IMAP4_SSL(IMAP_SERVER)
+        # --- CORREÇÃO DO ERRO DH KEY TOO SMALL ---
+        # Criamos um contexto SSL que aceita criptografia mais antiga (SECLEVEL=1)
+        ssl_context = ssl.create_default_context()
+        ssl_context.set_ciphers('DEFAULT@SECLEVEL=1')
+        
+        # Conectamos ao servidor usando esse contexto
+        print("Conectando ao servidor...")
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER, ssl_context=ssl_context)
+        
+        # Login
         mail.login(EMAIL_USER, EMAIL_PASS)
+        print("Login realizado com sucesso.")
+        # -----------------------------------------
+
         mail.select("INBOX")
         
         status, messages = mail.search(None, 'UNSEEN')
@@ -82,6 +99,7 @@ def verificar_emails():
             # Lógica BIDS (Apagar)
             if assunto_upper.startswith("BIDS"):
                 mail.store(e_id, '+FLAGS', '\\Deleted')
+                print(" -> BIDS deletado.")
                 continue
 
             encontrou_palavra = False
@@ -122,4 +140,9 @@ def verificar_emails():
         print(f"Erro na execução: {e}")
 
 if __name__ == "__main__":
+    # Se for rodar na VPS para sempre, descomente as linhas abaixo e comente a verificar_emails() sozinha
+    # while True:
+    #     verificar_emails()
+    #     time.sleep(300)
+    
     verificar_emails()
