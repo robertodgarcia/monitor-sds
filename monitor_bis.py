@@ -1,3 +1,8 @@
+Aqui está o seu código ajustado. Fiz exatamente as **3 retificações** que você pediu (remetente simplificado, lógica de palavras corrigida e mensagem de teste ao ligar).
+
+Mantive a estrutura final pronta para o **GitHub Actions** (sem o loop infinito).
+
+```python
 import imaplib
 import email
 from email.header import decode_header
@@ -7,11 +12,11 @@ import io
 import PyPDF2
 import os
 import datetime
-import ssl # <--- Essencial para corrigir o erro de chave
+import ssl 
 
 # --- CONFIGURAÇÕES ---
-# Se estiver rodando localmente/VPS e as variáveis não estiverem setadas, 
-# substitua os os.getenv pelo valor real entre aspas.
+# No GitHub Actions, estas variáveis vêm dos "Secrets".
+# Se for rodar no PC para teste, preencha com seus dados reais entre aspas.
 EMAIL_USER = os.getenv("EMAIL_USER") 
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 IMAP_SERVER = "imaps.expresso.pe.gov.br"
@@ -22,12 +27,15 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 PALAVRAS_CHAVE = ["DOMINGUEZ", "AGOSTINHO"]
 
 def enviar_telegram(mensagem):
+    print(f" [Telegram] Tentando enviar: {mensagem[:50]}...")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
     try:
-        requests.post(url, data=data)
+        response = requests.post(url, data=data)
+        if response.status_code != 200:
+            print(f" [Erro API Telegram] Status: {response.status_code} | {response.text}")
     except Exception as e:
-        print(f"Erro Telegram: {e}")
+        print(f" [Erro Conexão Telegram] {e}")
 
 def extrair_texto_pdf(payload_bytes):
     texto_completo = ""
@@ -57,35 +65,33 @@ def decodificar_texto(header_text):
 def verificar_emails():
     print(f"--- Iniciando verificação: {datetime.datetime.now()} ---")
     
-    # Verifica se as senhas existem antes de tentar
     if not EMAIL_USER or not EMAIL_PASS:
-        print("ERRO CRÍTICO: Variáveis de ambiente (EMAIL_USER/PASS) não encontradas.")
-        print("Se estiver rodando no PC/VPS, preencha as variáveis no topo do script.")
+        print("ERRO CRÍTICO: Credenciais não encontradas (Secrets vazios).")
         return
 
     try:
-        # --- CORREÇÃO DO ERRO DH KEY TOO SMALL ---
-        # Criamos um contexto SSL que aceita criptografia mais antiga (SECLEVEL=1)
+        # --- CORREÇÃO SSL ---
         ssl_context = ssl.create_default_context()
         ssl_context.set_ciphers('DEFAULT@SECLEVEL=1')
         
-        # Conectamos ao servidor usando esse contexto
         print("Conectando ao servidor...")
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, ssl_context=ssl_context)
         
-        # Login
         mail.login(EMAIL_USER, EMAIL_PASS)
         print("Login realizado com sucesso.")
-        # -----------------------------------------
-
+        
         mail.select("INBOX")
         
+        # Busca APENAS e-mails novos (não lidos)
         status, messages = mail.search(None, 'UNSEEN')
         email_ids = messages[0].split()
         
         if not email_ids:
-            print("Nenhum e-mail novo.")
+            print(" > Nenhum e-mail novo.")
+            return
         
+        print(f" > Encontrados {len(email_ids)} novos e-mails.")
+
         for e_id in email_ids:
             _, msg_data = mail.fetch(e_id, '(RFC822)')
             msg = email.message_from_bytes(msg_data[0][1])
@@ -94,43 +100,49 @@ def verificar_emails():
             remetente = decodificar_texto(msg["From"]).lower()
             assunto_upper = assunto.upper().strip()
             
-            print(f"Checando: {assunto}")
+            print(f"   Checando: {assunto} | De: {remetente}")
 
             # Lógica BIDS (Apagar)
             if assunto_upper.startswith("BIDS"):
                 mail.store(e_id, '+FLAGS', '\\Deleted')
-                print(" -> BIDS deletado.")
+                print("   -> BIDS deletado.")
                 continue
 
-            encontrou_palavra = False
-            palavras_encontradas = []
+            # Extração de Conteúdo
             conteudo_analisado = ""
-
             if msg.is_multipart():
                 for part in msg.walk():
                     if part.get_content_type() == "text/plain":
                         try: conteudo_analisado += part.get_payload(decode=True).decode('utf-8', errors='ignore')
                         except: pass
                     if "application/pdf" in part.get_content_type() or ".pdf" in str(part.get_filename("")).lower():
+                        print("      [PDF] Lendo anexo...")
                         conteudo_analisado += "\n" + extrair_texto_pdf(part.get_payload(decode=True))
             else:
                 try: conteudo_analisado = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
                 except: pass
 
+            # Lógica de Palavras (Correção 2: Lista direta)
             conteudo_upper = conteudo_analisado.upper()
-            for palavra in PALAVRAS_CHAVE:
-                if palavra in conteudo_upper:
-                    encontrou_palavra = True
-                    palavras_encontradas.append(palavra)
+            palavras_encontradas = [p for p in PALAVRAS_CHAVE if p in conteudo_upper]
 
-            if "grafica@policiacivil.pe.gov.br" in remetente and assunto_upper.startswith("BIS"):
-                if encontrou_palavra:
+            if palavras_encontradas:
+                print(f"      [!] Encontrou: {palavras_encontradas}")
+
+            # Lógica GRÁFICA (Correção 1: Checagem simplificada)
+            # Verifica se "grafica" está no remetente (não precisa ser o email exato)
+            if "grafica" in remetente and "BIS" in assunto_upper:
+                if palavras_encontradas:
                     enviar_telegram(f"🚨 **SEU NOME NO BIS!**\n{assunto}\nTermos: {', '.join(palavras_encontradas)}")
                 else:
                     enviar_telegram(f"ℹ️ **Novo BIS Publicado**\n{assunto}\n(Nada encontrado)")
             
-            elif "divport@policiacivil.pe.gov.br" in remetente and encontrou_palavra:
-                enviar_telegram(f"⚠️ **CITAÇÃO NA DIVPORT**\n{assunto}\nTermos: {', '.join(palavras_encontradas)}")
+            # Lógica DIVPORT (Correção 1: Checagem simplificada)
+            elif "divport" in remetente:
+                if palavras_encontradas:
+                    enviar_telegram(f"⚠️ **CITAÇÃO NA DIVPORT**\n{assunto}\nTermos: {', '.join(palavras_encontradas)}")
+                else:
+                    print("      [Divport] E-mail ignorado (sem palavras chaves).")
 
         mail.expunge()
         mail.close()
@@ -140,6 +152,11 @@ def verificar_emails():
         print(f"Erro na execução: {e}")
 
 if __name__ == "__main__":
-    # Sem loop infinito. Ele roda uma vez e o GitHub encerra.
-    # O agendador do GitHub (CRON) vai chamar de novo daqui a pouco.
+    # Correção 3: Teste de Telegram ao iniciar
+    # Isso ajuda a saber se o Bot está funcionando toda vez que o GitHub rodar
+    print("🤖 Iniciando script via GitHub Actions...")
+    enviar_telegram("🤖 Monitor Rodando (GitHub Actions) - Check iniciado.")
+    
+    # Executa uma vez e encerra (Sem loop, pois é GitHub Actions)
     verificar_emails()
+```
