@@ -5,18 +5,15 @@ import time
 import requests
 import io
 import PyPDF2
-import os
+import os  # Importante para pegar as senhas secretas
 import datetime
-import ssl # Importante para corrigir o erro DH_KEY
 
-# --- CONFIGURAÇÕES ---
-# Se estiver na VPS, pode escrever as senhas direto aqui nas aspas se preferir.
-# Se estiver no GitHub, deixe os os.getenv.
-EMAIL_USER = os.getenv("EMAIL_USER") or "SEU_EMAIL_AQUI" 
-EMAIL_PASS = os.getenv("EMAIL_PASS") or "SUA_SENHA_AQUI"
+# --- CONFIGURAÇÕES VIA VARIÁVEIS DE AMBIENTE (SEGURANÇA) ---
+EMAIL_USER = os.getenv("EMAIL_USER")
+EMAIL_PASS = os.getenv("EMAIL_PASS")
 IMAP_SERVER = "imaps.expresso.pe.gov.br"
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or "SEU_TOKEN_AQUI"
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or "SEU_CHAT_ID"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 PALAVRAS_CHAVE = ["DOMINGUEZ", "AGOSTINHO"]
 
@@ -29,33 +26,40 @@ def enviar_telegram(mensagem):
         print(f"Erro Telegram: {e}")
 
 def extrair_texto_pdf(payload_bytes):
-    texto = ""
+    texto_completo = ""
     try:
-        leitor = PyPDF2.PdfReader(io.BytesIO(payload_bytes))
-        for pag in leitor.pages: texto += pag.extract_text() + "\n"
-    except: pass
-    return texto
+        arquivo_pdf = io.BytesIO(payload_bytes)
+        leitor = PyPDF2.PdfReader(arquivo_pdf)
+        for pagina in leitor.pages:
+            texto_completo += pagina.extract_text() + "\n"
+    except:
+        return ""
+    return texto_completo
 
-def decodificar(header):
-    if not header: return ""
-    res = ""
-    for b, enc in decode_header(header):
-        if isinstance(b, bytes):
-            try: res += b.decode(enc or 'utf-8', errors='ignore')
-            except: res += b.decode('utf-8', errors='ignore')
-        else: res += str(b)
-    return res
+def decodificar_texto(header_text):
+    if not header_text: return ""
+    decoded_list = decode_header(header_text)
+    texto_final = ""
+    for content, encoding in decoded_list:
+        if isinstance(content, bytes):
+            try:
+                texto_final += content.decode(encoding if encoding else 'utf-8', errors='ignore')
+            except:
+                texto_final += content.decode('utf-8', errors='ignore')
+        else:
+            texto_final += str(content)
+    return texto_final
 
-def verificar():
-    print(f"Verificando: {datetime.datetime.now()}")
+def verificar_emails():
+    print("--- Iniciando verificação ---")
+    
+    # Tratamento de erro caso as variáveis não existam
+    if not EMAIL_USER or not EMAIL_PASS:
+        print("ERRO: Credenciais não configuradas no GitHub Secrets.")
+        return
+
     try:
-        # --- CORREÇÃO SSL: Permite chaves antigas ---
-        ssl_context = ssl.create_default_context()
-        ssl_context.set_ciphers('DEFAULT@SECLEVEL=1')
-        
-        mail = imaplib.IMAP4_SSL(IMAP_SERVER, ssl_context=ssl_context)
-        # -------------------------------------------
-        
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER)
         mail.login(EMAIL_USER, EMAIL_PASS)
         mail.select("INBOX")
         
@@ -64,47 +68,51 @@ def verificar():
         
         if not email_ids:
             print("Nenhum e-mail novo.")
-
+        
         for e_id in email_ids:
             _, msg_data = mail.fetch(e_id, '(RFC822)')
             msg = email.message_from_bytes(msg_data[0][1])
             
-            assunto = decodificar(msg["Subject"])
-            remetente = decodificar(msg["From"]).lower()
+            assunto = decodificar_texto(msg["Subject"])
+            remetente = decodificar_texto(msg["From"]).lower()
             assunto_upper = assunto.upper().strip()
             
-            print(f"Processando: {assunto}")
+            print(f"Checando: {assunto}")
 
-            # BIDS
+            # Lógica BIDS (Apagar)
             if assunto_upper.startswith("BIDS"):
                 mail.store(e_id, '+FLAGS', '\\Deleted')
                 continue
-                
-            conteudo = ""
+
+            encontrou_palavra = False
+            palavras_encontradas = []
+            conteudo_analisado = ""
+
             if msg.is_multipart():
                 for part in msg.walk():
-                    ctype = part.get_content_type()
-                    if ctype == "text/plain":
-                        try: conteudo += part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                    if part.get_content_type() == "text/plain":
+                        try: conteudo_analisado += part.get_payload(decode=True).decode('utf-8', errors='ignore')
                         except: pass
-                    elif "pdf" in ctype or ".pdf" in str(part.get_filename("")).lower():
-                        conteudo += "\n" + extrair_texto_pdf(part.get_payload(decode=True))
+                    if "application/pdf" in part.get_content_type() or ".pdf" in str(part.get_filename("")).lower():
+                        conteudo_analisado += "\n" + extrair_texto_pdf(part.get_payload(decode=True))
             else:
-                try: conteudo = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+                try: conteudo_analisado = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
                 except: pass
-            
-            # Busca palavras
-            conteudo_upper = conteudo.upper()
-            encontradas = [p for p in PALAVRAS_CHAVE if p in conteudo_upper]
-            
+
+            conteudo_upper = conteudo_analisado.upper()
+            for palavra in PALAVRAS_CHAVE:
+                if palavra in conteudo_upper:
+                    encontrou_palavra = True
+                    palavras_encontradas.append(palavra)
+
             if "grafica@policiacivil.pe.gov.br" in remetente and assunto_upper.startswith("BIS"):
-                if encontradas:
-                    enviar_telegram(f"🚨 **SEU NOME NO BIS!**\n{assunto}\nTermos: {', '.join(encontradas)}")
+                if encontrou_palavra:
+                    enviar_telegram(f"🚨 **SEU NOME NO BIS!**\n{assunto}\nTermos: {', '.join(palavras_encontradas)}")
                 else:
-                    enviar_telegram(f"ℹ️ **Novo BIS (Sem seu nome)**\n{assunto}")
+                    enviar_telegram(f"ℹ️ **Novo BIS Publicado**\n{assunto}\n(Nada encontrado)")
             
-            elif "divport" in remetente and encontradas:
-                enviar_telegram(f"⚠️ **CITAÇÃO DIVPORT**\n{assunto}")
+            elif "divport@policiacivil.pe.gov.br" in remetente and encontrou_palavra:
+                enviar_telegram(f"⚠️ **CITAÇÃO NA DIVPORT**\n{assunto}\nTermos: {', '.join(palavras_encontradas)}")
 
         mail.expunge()
         mail.close()
@@ -113,8 +121,5 @@ def verificar():
     except Exception as e:
         print(f"Erro na execução: {e}")
 
-# Se estiver rodando na VPS (Loop infinito):
 if __name__ == "__main__":
-    while True:
-        verificar()
-        time.sleep(300)
+    verificar_emails()
