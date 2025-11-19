@@ -2,8 +2,10 @@ name: Monitor de Email Policia
 
 on:
   schedule:
-    # Roda a cada 60 minutos (o GitHub free às vezes atrasa se por 5 min exatos)
-    - cron: '*/60 * * * *'
+    # Minuto 0
+    # Horas: 10h às 23h UTC (equivale a 07h às 20h no horário local)
+    # Dias: 1 (Segunda) até 6 (Sábado)
+    - cron: '0 10-23 * * 1-6'
   workflow_dispatch: # Permite rodar manualmente clicando num botão se quiser testar
 
 jobs:
