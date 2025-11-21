@@ -7,11 +7,11 @@ import io
 import PyPDF2
 import os
 import datetime
-import ssl 
+import ssl
 import re
 
 # --- CONFIGURAÇÕES ---
-EMAIL_USER = os.getenv("EMAIL_USER") 
+EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 IMAP_SERVER = "imaps.expresso.pe.gov.br"
 
@@ -98,7 +98,7 @@ def verificar_emails():
 
         if not email_ids:
             print(" > Nenhum e-mail novo.")
-            enviar_telegram(f"📊 **Relatório de Check:**\nNenhum e-mail novo encontrado.")
+            # LINHA DE NOTIFICAÇÃO REMOVIDA
             return
         
         print(f" > Encontrados {total_emails} novos e-mails.")
@@ -112,7 +112,7 @@ def verificar_emails():
             remetente = decodificar_texto(msg["From"]).lower()
             assunto_upper = assunto.upper().strip()
             
-            print(f"   Checando: {assunto}")
+            print(f"    Checando: {assunto}")
 
             if assunto_upper.startswith("BIDS"):
                 mail.store(e_id, '+FLAGS', '\\Deleted')
@@ -155,11 +155,11 @@ def verificar_emails():
                 ctype = msg.get_content_type()
                 payload = msg.get_payload(decode=True)
                 if "html" in ctype:
-                     conteudo_analisado = extrair_texto_html(payload)
-                     lista_htmls.append(("email_completo.html", payload))
+                    conteudo_analisado = extrair_texto_html(payload)
+                    lista_htmls.append(("email_completo.html", payload))
                 else:
-                     try: conteudo_analisado = payload.decode('utf-8', errors='ignore')
-                     except: pass
+                    try: conteudo_analisado = payload.decode('utf-8', errors='ignore')
+                    except: pass
 
             # --- LÓGICA DE PRIORIDADE DE ANEXO ---
             # Se tiver PDF, manda SÓ os PDFs. Se não tiver, manda os HTMLs.
