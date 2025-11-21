@@ -92,18 +92,23 @@ def verificar_emails():
         status, messages = mail.search(None, 'UNSEEN')
         email_ids = messages[0].split()
         
-        total_emails = len(email_ids)
+        total_emails_encontrados = len(email_ids) # ### MODIFICAÇÃO ### Alterado o nome da variável
+        total_emails = total_emails_encontrados # Variável de contagem para o relatório final
         qtd_com_alerta = 0
         qtd_sem_alerta = 0
-
+        
+        ### MODIFICAÇÃO ### Flag para saber se pelo menos um e-mail não-BIDS foi processado/encontrado
+        emails_nao_bids_processados = 0 
+        
         if not email_ids:
             print(" > Nenhum e-mail novo.")
-            # LINHA DE NOTIFICAÇÃO REMOVIDA
             return
         
         print(f" > Encontrados {total_emails} novos e-mails.")
-        enviar_telegram(f"🔄 Verificando {total_emails} novos e-mails...")
-
+        
+        # ### MODIFICAÇÃO ### A notificação inicial será enviada se houver e-mails APÓS a filtragem BIDS.
+        # Por enquanto, a remoção da linha que envia o telegram antes do loop
+        
         for e_id in email_ids:
             _, msg_data = mail.fetch(e_id, '(RFC822)')
             msg = email.message_from_bytes(msg_data[0][1])
@@ -116,9 +121,16 @@ def verificar_emails():
 
             if assunto_upper.startswith("BIDS"):
                 mail.store(e_id, '+FLAGS', '\\Deleted')
-                total_emails -= 1 
+                total_emails -= 1 # Contabiliza como "não processado" para o relatório
                 continue
-
+            
+            # ### MODIFICAÇÃO ### Incrementa a contagem de e-mails não-BIDS processados
+            emails_nao_bids_processados += 1
+            
+            # ### MODIFICAÇÃO ### Envia a notificação inicial APENAS se este for o primeiro e-mail não-BIDS
+            if emails_nao_bids_processados == 1:
+                enviar_telegram(f"🔄 Verificando {total_emails_encontrados} novos e-mails...")
+                
             conteudo_analisado = ""
             
             # Listas separadas para fazer a filtragem depois
@@ -207,13 +219,15 @@ def verificar_emails():
                     enviar_telegram("⚠️ Encontrei o nome, mas não havia anexo legível.")
 
         # --- RELATÓRIO FINAL ---
-        relatorio = (
-            f"📊 **Relatório Final:**\n"
-            f"📨 Processados: {total_emails}\n"
-            f"🚨 Com seu nome: {qtd_com_alerta}\n"
-            f"⚪ Sem seu nome: {qtd_sem_alerta}"
-        )
-        enviar_telegram(relatorio)
+        ### MODIFICAÇÃO ### Só envia o relatório se tiver processado e-mails que não eram BIDS
+        if emails_nao_bids_processados > 0:
+            relatorio = (
+                f"📊 **Relatório Final:**\n"
+                f"📨 Processados: {emails_nao_bids_processados}\n" # ### MODIFICAÇÃO ### Uso de emails_nao_bids_processados
+                f"🚨 Com seu nome: {qtd_com_alerta}\n"
+                f"⚪ Sem seu nome: {qtd_sem_alerta}"
+            )
+            enviar_telegram(relatorio)
 
         mail.expunge()
         mail.close()
