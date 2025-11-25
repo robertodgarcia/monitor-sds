@@ -1,3 +1,15 @@
+import imaplib
+import email
+from email.header import decode_header
+import time
+import requests
+import io
+import PyPDF2
+import os
+import datetime # Certifique-se de que está aqui!
+import ssl
+import re
+
 def verificar_emails():
     print(f"--- Iniciando verificação: {datetime.datetime.now()} ---")
     
