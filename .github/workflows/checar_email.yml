@@ -1,6 +1,9 @@
 name: Monitor de Email Policia
 
 
+- name: Rodar Script
+  run: python monitor_bis.py
+    
 - name: Diagnóstico IMAPS Expresso (DNS + TCP 993)
   run: |
     python - << 'PY'
