@@ -39,10 +39,10 @@ jobs:
           s.close()
           PY
 
-      - name: Rodar Script
+   - name: Rodar Script
         env:
-          EMAIL_USER: ${{ secrets.EMAIL_USER }}
-          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EMAIL_USER: "${{ secrets.EMAIL_USER }}"
+          EMAIL_PASS: "${{ secrets.EMAIL_PASS }}"
+          TELEGRAM_TOKEN: "${{ secrets.TELEGRAM_TOKEN }}"
+          TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
         run: python monitor_bis.py
