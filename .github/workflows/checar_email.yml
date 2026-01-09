@@ -13,36 +13,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar código
-        uses: actions/checkout@v3
+    - name: Baixar código
+      uses: actions/checkout@v3
 
-      - name: Configurar Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
 
-      - name: Instalar bibliotecas
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests PyPDF2
+    - name: Instalar bibliotecas
+      run: |
+        pip install requests PyPDF2
 
-      - name: Diagnóstico IMAPS Expresso (DNS + TCP 993)
-        run: |
-          python - << 'PY'
-          import socket
-          host = "imaps.expresso.pe.gov.br"
-          print("Host:", host)
-          ip = socket.gethostbyname(host)
-          print("DNS OK ->", ip)
-          s = socket.create_connection((host, 993), timeout=10)
-          print("TCP 993 conectou ✅")
-          s.close()
-          PY
-
-   - name: Rodar Script
-        env:
-          EMAIL_USER: "${{ secrets.EMAIL_USER }}"
-          EMAIL_PASS: "${{ secrets.EMAIL_PASS }}"
-          TELEGRAM_TOKEN: "${{ secrets.TELEGRAM_TOKEN }}"
-          TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
-        run: python monitor_bis.py
+    - name: Rodar Script
+      env:
+        EMAIL_USER: ${{ secrets.EMAIL_USER }}
+        EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: python monitor_bis.py
