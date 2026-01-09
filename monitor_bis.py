@@ -24,7 +24,6 @@ PALAVRAS_CHAVE = ["DOMINGUEZ", "AGOSTINHO"]
 
 # --- FUNÇÕES AUXILIARES ---
 
-
 def enviar_telegram(mensagem):
     print(f" [Telegram] Msg: {mensagem[:50]}...")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -262,11 +261,6 @@ def verificar_emails():
         mail.logout()
         
     except Exception as e:
-        import traceback
-        print("❌ ERRO:", repr(e))
-        traceback.print_exc()
-        raise
-        
         print(f"Erro na execução: {e}")
         enviar_telegram(f"⚠️ Erro no script: {e}")
 
