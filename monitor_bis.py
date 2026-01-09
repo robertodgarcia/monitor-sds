@@ -24,6 +24,19 @@ PALAVRAS_CHAVE = ["DOMINGUEZ", "AGOSTINHO"]
 
 # --- FUNÇÕES AUXILIARES ---
 
+- name: Diagnóstico IMAPS Expresso (DNS + TCP 993)
+  run: |
+    python - << 'PY'
+    import socket
+    host = "imaps.expresso.pe.gov.br"
+    print("Host:", host)
+    ip = socket.gethostbyname(host)
+    print("DNS OK ->", ip)
+    s = socket.create_connection((host, 993), timeout=10)
+    print("TCP 993 conectou ✅")
+    s.close()
+    PY
+
 def enviar_telegram(mensagem):
     print(f" [Telegram] Msg: {mensagem[:50]}...")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
