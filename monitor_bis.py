@@ -261,6 +261,11 @@ def verificar_emails():
         mail.logout()
         
     except Exception as e:
+        import traceback
+        print("❌ ERRO:", repr(e))
+        traceback.print_exc()
+        raise
+        
         print(f"Erro na execução: {e}")
         enviar_telegram(f"⚠️ Erro no script: {e}")
 
