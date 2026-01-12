@@ -6,29 +6,38 @@ on:
     # Horas: 10h às 23h UTC (equivale a 07h às 20h no horário local)
     # Dias: 1 (Segunda) até 6 (Sábado)
     - cron: '0 10-23 * * 1-6'
-  workflow_dispatch: # Permite rodar manualmente clicando num botão se quiser testar
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-    - name: Baixar código
-      uses: actions/checkout@v3
+      - name: Baixar código
+        uses: actions/checkout@v3
 
-    - name: Configurar Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Instalar bibliotecas
-      run: |
-        pip install requests PyPDF2
+      - name: Instalar bibliotecas
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests PyPDF2
 
-    - name: Rodar Script
-      env:
-        EMAIL_USER: ${{ secrets.EMAIL_USER }}
-        EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: python monitor_bis.py
+      - name: Diagnóstico DNS + TCP 993 (IMAPS)
+        run: |
+          set -x
+          getent hosts imaps.expresso.pe.gov.br || true
+          timeout 10 bash -lc 'cat < /dev/null > /dev/tcp/imaps.expresso.pe.gov.br/993' \
+            && echo "TCP 993 OK" || echo "TCP 993 FALHOU"
+
+      - name: Rodar monitor
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python monitor_bis.py
