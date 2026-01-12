@@ -26,12 +26,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests PyPDF2
 
-      - name: Diagnóstico DNS + TCP 993 (IMAPS)
+      - name: Diagnóstico rede (DNS + TCP 993 + IPv4/IPv6)
         run: |
           set -x
-          getent hosts imaps.expresso.pe.gov.br || true
+          echo "DNS:"
+          getent ahosts imaps.expresso.pe.gov.br || true
+      
+          echo "Teste TCP 993 (genérico):"
           timeout 10 bash -lc 'cat < /dev/null > /dev/tcp/imaps.expresso.pe.gov.br/993' \
             && echo "TCP 993 OK" || echo "TCP 993 FALHOU"
+      
+          echo "Teste IPv4 explícito (se tiver nc):"
+          (command -v nc >/dev/null && timeout 10 nc -4 -vz imaps.expresso.pe.gov.br 993) || true
+      
+          echo "Teste IPv6 explícito (se tiver nc):"
+          (command -v nc >/dev/null && timeout 10 nc -6 -vz imaps.expresso.pe.gov.br 993) || true
+
+
 
       - name: Rodar monitor
         env:
