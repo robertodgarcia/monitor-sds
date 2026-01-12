@@ -90,7 +90,7 @@ def verificar_emails():
 
     try:
         ssl_context = ssl.create_default_context()
-        ssl_context.set_ciphers('DEFAULT@SECLEVEL=1')
+        # ssl_context.set_ciphers('DEFAULT@SECLEVEL=1')
         
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, ssl_context=ssl_context)
         mail.login(EMAIL_USER, EMAIL_PASS)
