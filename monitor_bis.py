@@ -89,6 +89,15 @@ def verificar_emails():
         return
 
     try:
+
+
+        import socket
+        try:
+            socket.create_connection((IMAP_SERVER, 993), timeout=10)
+            print("Porta 993 está aberta e acessível!")
+        except Exception as e:
+            print(f"Não foi possível alcançar o servidor: {e}")
+        
         ssl_context = ssl.create_default_context()
         # ssl_context.set_ciphers('DEFAULT@SECLEVEL=1')
         
